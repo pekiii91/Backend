@@ -3,30 +3,35 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUI = require("swagger-ui-express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
-const { authenticateToken } = require("./middleware/auth");
-const pool = require("./database");
+const { authenticateToken } = require("./middleware/auth"); // Softver autentifikaciju tokena
+const pool = require("./database"); // Datoteka sa vezom sa bazom podataka
 
 const port = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());
 
+//Definicija Swagger opcija
 const swaggerOptions = {
-    swaggerDefinition: {
-        info: {
-            title: "Task API",
-            version: "1.0.0",
-        },
-        servers: [{
-            url: "http://localhost:5000",
-        }, ],
+  swaggerDefinition: {
+    info: {
+      title: "Task API",
+      version: "1.0.0",
     },
-    apis: ["server.js"],
+    servers: [
+      {
+        url: "http://localhost:5000",
+      },
+    ],
+  },
+  apis: ["server.js"], //putana do fajlova sa rutama
 };
 
+//Generisanje swagger dokumentacije
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerDocs));
 
+//User Registration
 /**
  * @swagger
  * /users/register:
@@ -53,25 +58,27 @@ app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerDocs));
  *       400:
  *         description: Invalid input
  */
-app.post("/register", async(req, res) => {
-    const { email, password, passwordConfirmation } = req.body;
+app.post("/register", async (req, res) => {
+  const { email, password, passwordConfirmation } = req.body;
 
-    if (password !== passwordConfirmation) {
-        return res.status(400).json({ message: "Passwords do not match" });
-    }
+  if (password !== passwordConfirmation) {
+    return res.status(400).json({ message: "Passwords do not match" });
+  }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-    try {
-        const newUser = await pool.query(
-            "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *", [email, hashedPassword]
-        );
-        res.status(201).json(newUser.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: "Error creating user" });
-    }
+  try {
+    const newUser = await pool.query(
+      "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
+      [email, hashedPassword]
+    );
+    res.status(201).json(newUser.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: "Error creating user" });
+  }
 });
 
+//User Authentication
 /**
  * @swagger
  * /users/login:
@@ -98,31 +105,33 @@ app.post("/register", async(req, res) => {
  *       401:
  *         description: Unauthorized
  */
-app.post("/login", async(req, res) => {
-    const { email, password } = req.body;
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
 
-    try {
-        const user = await pool.query("SELECT * FROM users WHERE email = $1", [
-            email,
-        ]);
+  try {
+    const user = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
 
-        if (user.rows.length === 0) {
-            return res.status(400).json({ message: "User not found" });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.rows[0].password);
-
-        if (!validPassword) {
-            return res.status(400).json({ message: "Invalid password" });
-        }
-
-        const token = jwt.sign({ userId: user.rows[0].id },
-            process.env.JWT_SECRET, { expiresIn: "1h" }
-        );
-        res.json({ token });
-    } catch (error) {
-        res.status(500).json({ message: "Error during authentication" });
+    if (user.rows.length === 0) {
+      return res.status(400).json({ message: "User not found" });
     }
+
+    const validPassword = await bcrypt.compare(password, user.rows[0].password);
+
+    if (!validPassword) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
+
+    const token = jwt.sign(
+      { userId: user.rows[0].id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+    res.json({ token });
+  } catch (error) {
+    res.status(500).json({ message: "Error during authentication" });
+  }
 });
 
 /**
@@ -151,18 +160,20 @@ app.post("/login", async(req, res) => {
  *       400:
  *         description: Invalid input
  */
-app.post("/tasks", authenticateToken, async(req, res) => {
-    const { title, description, priority, status } = req.body;
-    const userId = req.user.userId;
+//Kreirati novi zadatak
+app.post("/tasks", authenticateToken, async (req, res) => {
+  const { title, description, priority, status } = req.body;
+  const userId = req.user.userId;
 
-    try {
-        const newTask = await pool.query(
-            "INSERT INTO tasks (title, description, priority, status, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *", [title, description, priority, status, userId]
-        );
-        res.status(201).json(newTask.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: "Error creating task" });
-    }
+  try {
+    const newTask = await pool.query(
+      "INSERT INTO tasks (title, description, priority, status, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [title, description, priority, status, userId]
+    );
+    res.status(201).json(newTask.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: "Error creating task" });
+  }
 });
 
 /**
@@ -184,23 +195,24 @@ app.post("/tasks", authenticateToken, async(req, res) => {
  *         description: Not found
  *
  */
+//Kreirati specificni task
+app.get("/tasks/:Id", authenticateToken, async (req, res) => {
+  const taskId = req.params.id;
 
-app.get("/tasks/:Id", authenticateToken, async(req, res) => {
-    const taskId = req.params.id;
+  try {
+    const task = await pool.query(
+      "SELECT * FROM tasks WHERE id = $1 AND user_id = $2",
+      [taskId, req.user.userId]
+    );
 
-    try {
-        const task = await pool.query(
-            "SELECT * FROM tasks WHERE id = $1 AND user_id = $2", [taskId, req.user.userId]
-        );
-
-        if (task.rows.length === 0) {
-            return res.status(404).json({ message: "Task not found" });
-        }
-
-        res.json(task.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching task" });
+    if (task.rows.length === 0) {
+      return res.status(404).json({ message: "Task not found" });
     }
+
+    res.json(task.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching task" });
+  }
 });
 
 /**
@@ -226,16 +238,16 @@ app.get("/tasks/:Id", authenticateToken, async(req, res) => {
  *                   description:
  *                     type: string
  */
-
-app.get("/tasks", authenticateToken, async(req, res) => {
-    try {
-        const tasks = await pool.query("SELECT * FROM tasks WHERE user_id = $1", [
-            req.user.userId,
-        ]);
-        res.json(tasks.rows);
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching tasks" });
-    }
+// Svi taskovi za korisnika
+app.get("/tasks", authenticateToken, async (req, res) => {
+  try {
+    const tasks = await pool.query("SELECT * FROM tasks WHERE user_id = $1", [
+      req.user.userId,
+    ]);
+    res.json(tasks.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching tasks" });
+  }
 });
 
 /**
@@ -257,24 +269,25 @@ app.get("/tasks", authenticateToken, async(req, res) => {
  *         description: Not found
  *
  */
+// Azuriranje task-a
+app.put("/tasks/:Id", authenticateToken, async (req, res) => {
+  const taskId = req.params.id;
+  const { title, description, priority, status } = req.body;
 
-app.put("/tasks/:Id", authenticateToken, async(req, res) => {
-    const taskId = req.params.id;
-    const { title, description, priority, status } = req.body;
+  try {
+    const updatedTask = await pool.query(
+      "UPDATE tasks SET title = $1, description = $2, priority = $3, status = $4 WHERE id = $5 AND user_id = $6 RETURNING *",
+      [title, description, priority, status, taskId, req.user.userId]
+    );
 
-    try {
-        const updatedTask = await pool.query(
-            "UPDATE tasks SET title = $1, description = $2, priority = $3, status = $4 WHERE id = $5 AND user_id = $6 RETURNING *", [title, description, priority, status, taskId, req.user.userId]
-        );
-
-        if (updatedTask.rows.length === 0) {
-            return res.status(404).json({ message: "Task not found" });
-        }
-
-        res.json(updatedTask.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: "Error updating task" });
+    if (updatedTask.rows.length === 0) {
+      return res.status(404).json({ message: "Task not found" });
     }
+
+    res.json(updatedTask.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: "Error updating task" });
+  }
 });
 
 /**
@@ -295,25 +308,26 @@ app.put("/tasks/:Id", authenticateToken, async(req, res) => {
  *       404:
  *         description: Task not found
  */
+// Brisanje task-a
+app.delete("/tasks/:Id", authenticateToken, async (req, res) => {
+  const taskId = req.params.id;
 
-app.delete("/tasks/:Id", authenticateToken, async(req, res) => {
-    const taskId = req.params.id;
+  try {
+    const deletedTask = await pool.query(
+      "DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *",
+      [taskId, req.user.userId]
+    );
 
-    try {
-        const deletedTask = await pool.query(
-            "DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *", [taskId, req.user.userId]
-        );
-
-        if (deletedTask.rows.length === 0) {
-            return res.status(404).json({ message: "Task not found" });
-        }
-
-        res.json({ message: "Task deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ message: "Error deleting task" });
+    if (deletedTask.rows.length === 0) {
+      return res.status(404).json({ message: "Task not found" });
     }
-});
 
+    res.json({ message: "Task deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting task" });
+  }
+});
+// Start server
 app.listen(5000, port, () => {
-    console.log(`Server is running on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
